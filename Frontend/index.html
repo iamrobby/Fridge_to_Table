@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fridge Decider</title>
+  <!--
+    LEARNING: This is a pure HTML/CSS/JS frontend.
+    No frameworks needed. It communicates with your Python backend
+    via the Fetch API — the browser's built-in way to make HTTP requests.
+
+    ARCHITECTURE:
+    Browser (this file) ←→ FastAPI Backend (main.py) ←→ Ollama (local AI)
+  -->
+  <style>
+    /* ── DESIGN SYSTEM ────────────────────────────────────────────── */
+    :root {
+      --bg: #0f0f13;
+      --surface: #1a1a24;
+      --surface2: #22222f;
+      --border: #2e2e40;
+      --text: #e8e8f0;
+      --muted: #6b6b85;
+      --cook: #22c55e;
+      --cook-bg: rgba(34, 197, 94, 0.1);
+      --order: #f97316;
+      --order-bg: rgba(249, 115, 22, 0.1);
+      --accent: #818cf8;
+      --radius: 12px;
+      font-size: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    /* ── HEADER ───────────────────────────────────────────────────── */
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+      max-width: 480px;
+    }
+
+    .emoji-title {
+      font-size: 3rem;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text);
+    }
+
+    .subtitle {
+      margin-top: 0.5rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+
+    /* ── UPLOAD ZONE ──────────────────────────────────────────────── */
+    .upload-zone {
+      width: 100%;
+      max-width: 480px;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+
+    .upload-zone:hover,
+    .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--surface2);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon { font-size: 2.5rem; display: block; margin-bottom: 0.75rem; }
+
+    .upload-label {
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text);
+    }
+
+    .upload-hint {
+      margin-top: 0.25rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    /* ── PREVIEW ──────────────────────────────────────────────────── */
+    #preview-container {
+      width: 100%;
+      max-width: 480px;
+      display: none;
+      margin-top: 1rem;
+    }
+
+    #preview-img {
+      width: 100%;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      max-height: 280px;
+      object-fit: cover;
+    }
+
+    /* ── BUTTON ───────────────────────────────────────────────────── */
+    .btn {
+      display: block;
+      width: 100%;
+      max-width: 480px;
+      margin-top: 1rem;
+      padding: 0.875rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius);
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+
+    .btn:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── PIPELINE STATUS ──────────────────────────────────────────── */
+    #pipeline-status {
+      width: 100%;
+      max-width: 480px;
+      margin-top: 1.5rem;
+      display: none;
+    }
+
+    .pipeline-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+    }
+
+    .stage {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+    }
+
+    .stage-icon { font-size: 1.25rem; width: 1.5rem; text-align: center; flex-shrink: 0; }
+
+    .stage-info { flex: 1; }
+    .stage-name { font-size: 0.875rem; font-weight: 600; }
+    .stage-desc { font-size: 0.75rem; color: var(--muted); margin-top: 0.1rem; }
+
+    .stage-badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.5rem;
+      border-radius: 99px;
+      background: var(--surface2);
+      color: var(--muted);
+    }
+
+    .stage-badge.active { background: rgba(129,140,248,0.15); color: var(--accent); }
+    .stage-badge.done { background: rgba(34,197,94,0.15); color: var(--cook); }
+    .stage-badge.waiting { opacity: 0.4; }
+
+    /* ── RESULTS ──────────────────────────────────────────────────── */
+    #result-card {
+      width: 100%;
+      max-width: 480px;
+      margin-top: 1.5rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      overflow: hidden;
+      display: none;
+    }
+
+    .verdict-header {
+      padding: 1.5rem;
+      text-align: center;
+    }
+
+    .verdict-header.cook { background: var(--cook-bg); }
+    .verdict-header.order { background: var(--order-bg); }
+
+    .verdict-emoji { font-size: 3rem; display: block; }
+
+    .verdict-label {
+      font-size: 1.5rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-top: 0.5rem;
+    }
+
+    .verdict-label.cook { color: var(--cook); }
+    .verdict-label.order { color: var(--order); }
+
+    .verdict-reason {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-top: 0.4rem;
+    }
+
+    .result-body { padding: 1.25rem 1.5rem; }
+
+    .result-section { margin-bottom: 1.25rem; }
+    .result-section:last-child { margin-bottom: 0; }
+
+    .result-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
+    .result-value {
+      font-size: 0.9rem;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    .ingredients-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.4rem;
+    }
+
+    .ingredient-tag {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 99px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .effort-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 99px;
+    }
+
+    .effort-pill.cook { background: var(--cook-bg); color: var(--cook); }
+    .effort-pill.order { background: var(--order-bg); color: var(--order); }
+
+    /* ── ERROR ────────────────────────────────────────────────────── */
+    #error-box {
+      display: none;
+      width: 100%;
+      max-width: 480px;
+      margin-top: 1rem;
+      padding: 1rem 1.25rem;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: var(--radius);
+      color: #fca5a5;
+      font-size: 0.875rem;
+    }
+
+    /* ── LEARN BOX ────────────────────────────────────────────────── */
+    .learn-box {
+      width: 100%;
+      max-width: 480px;
+      margin-top: 2rem;
+      padding: 1rem 1.25rem;
+      background: rgba(129,140,248,0.06);
+      border: 1px solid rgba(129,140,248,0.2);
+      border-radius: var(--radius);
+      font-size: 0.8rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .learn-box strong { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="emoji-title">🧊</span>
+    <h1>Fridge Decider</h1>
+    <p class="subtitle">Snap your fridge or pantry. AI decides if you should cook or just order.</p>
+  </header>
+
+  <!-- UPLOAD ZONE -->
+  <div class="upload-zone" id="upload-zone">
+    <input type="file" id="file-input" accept="image/*" capture="environment">
+    <span class="upload-icon">📸</span>
+    <div class="upload-label">Drop a photo or tap to snap</div>
+    <div class="upload-hint">Works with fridge, pantry, or countertop photos</div>
+  </div>
+
+  <!-- IMAGE PREVIEW -->
+  <div id="preview-container">
+    <img id="preview-img" src="" alt="Fridge photo preview">
+  </div>
+
+  <!-- ANALYZE BUTTON -->
+  <button class="btn" id="analyze-btn" disabled>
+    🔍 Analyze My Fridge
+  </button>
+
+  <!-- PIPELINE VISUALIZATION ─────────────────────────────────────────────
+    LEARNING: This shows each stage of the pipeline to the user.
+    It updates in real-time so you can SEE the pipeline running.
+    This is great UX and also helps you understand what's happening.
+  ─────────────────────────────────────────────────────────────────────── -->
+  <div id="pipeline-status">
+    <div class="pipeline-title">⚡ Pipeline running</div>
+
+    <div class="stage" id="stage-upload">
+      <span class="stage-icon">📤</span>
+      <div class="stage-info">
+        <div class="stage-name">Upload</div>
+        <div class="stage-desc">Sending photo to local server</div>
+      </div>
+      <span class="stage-badge waiting" id="badge-upload">waiting</span>
+    </div>
+
+    <div class="stage" id="stage-vision">
+      <span class="stage-icon">👁️</span>
+      <div class="stage-info">
+        <div class="stage-name">Stage 1: Vision (LLaVA)</div>
+        <div class="stage-desc">Local model reads the photo → ingredient list</div>
+      </div>
+      <span class="stage-badge waiting" id="badge-vision">waiting</span>
+    </div>
+
+    <div class="stage" id="stage-decision">
+      <span class="stage-icon">🧠</span>
+      <div class="stage-info">
+        <div class="stage-name">Stage 2: Decision (Llama)</div>
+        <div class="stage-desc">Evaluates ingredients → cook or order</div>
+      </div>
+      <span class="stage-badge waiting" id="badge-decision">waiting</span>
+    </div>
+  </div>
+
+  <!-- ERROR BOX -->
+  <div id="error-box"></div>
+
+  <!-- RESULT CARD -->
+  <div id="result-card">
+    <div class="verdict-header" id="verdict-header">
+      <span class="verdict-emoji" id="verdict-emoji">🍳</span>
+      <div class="verdict-label" id="verdict-label">COOK</div>
+      <div class="verdict-reason" id="verdict-reason"></div>
+    </div>
+    <div class="result-body">
+      <div class="result-section">
+        <div class="result-label">EFFORT</div>
+        <span class="effort-pill" id="effort-pill">⏱ 15 min</span>
+      </div>
+      <div class="result-section">
+        <div class="result-label">WHAT TO DO</div>
+        <div class="result-value" id="recipe-value"></div>
+      </div>
+      <div class="result-section">
+        <div class="result-label">SPOTTED IN YOUR FRIDGE</div>
+        <div class="ingredients-list" id="ingredients-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- LEARNING BOX ─────────────────────────────────────────────────────────
+    This teaches the user what just happened under the hood.
+    Great for learning projects!
+  ─────────────────────────────────────────────────────────────────────── -->
+  <div class="learn-box">
+    <strong>🎓 How this works (local pipeline):</strong><br>
+    1. Your photo → FastAPI server (Python)<br>
+    2. Server sends image to <strong>LLaVA</strong> running in Ollama → gets ingredient list<br>
+    3. Ingredient list → <strong>Llama3.2</strong> running in Ollama → Cook or Order decision<br>
+    4. Result shown here. <em>No data leaves your machine.</em>
+  </div>
+
+  <script>
+    /*
+      =========================================================
+      LEARNING: The Frontend JavaScript Pipeline
+      =========================================================
+
+      This script does 3 things:
+      1. Handle file selection → show preview
+      2. On button click → send to backend → update UI stages
+      3. Show the result card
+
+      KEY CONCEPT: The Fetch API
+      fetch() is how browsers make HTTP requests.
+      It returns a "Promise" — a value that will arrive in the future.
+      We use async/await to handle Promises cleanly.
+
+      KEY CONCEPT: FormData
+      To upload a file, we use FormData — a special object
+      that encodes files for multipart/form-data HTTP requests.
+      =========================================================
+    */
+
+    // ── DOM REFERENCES ────────────────────────────────────────────────
+    // Cache DOM elements so we don't look them up repeatedly
+    const fileInput    = document.getElementById('file-input');
+    const uploadZone   = document.getElementById('upload-zone');
+    const previewImg   = document.getElementById('preview-img');
+    const previewCont  = document.getElementById('preview-container');
+    const analyzeBtn   = document.getElementById('analyze-btn');
+    const pipelineDiv  = document.getElementById('pipeline-status');
+    const resultCard   = document.getElementById('result-card');
+    const errorBox     = document.getElementById('error-box');
+
+    // ── BACKEND URL ───────────────────────────────────────────────────
+    // This points to our Python FastAPI server
+    const API_URL = 'http://localhost:8000';
+
+    // ── FILE SELECTION ────────────────────────────────────────────────
+    // When the user picks a file, show a preview and enable the button
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      // FileReader converts the file to a data URL (base64) for preview
+      // This is CLIENT-SIDE only — just for display
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        previewImg.src = ev.target.result;
+        previewCont.style.display = 'block';
+        analyzeBtn.disabled = false;
+        hideResults();
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // ── DRAG AND DROP ─────────────────────────────────────────────────
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('drag-over');
+    });
+
+    uploadZone.addEventListener('dragleave', () => {
+      uploadZone.classList.remove('drag-over');
+    });
+
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        // Programmatically set the file input
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        fileInput.files = dt.files;
+        fileInput.dispatchEvent(new Event('change'));
+      }
+    });
+
+    // ── PIPELINE STAGE HELPERS ────────────────────────────────────────
+    function setStage(stageId, status) {
+      /*
+        Updates the visual status of a pipeline stage.
+        status: 'waiting' | 'active' | 'done'
+
+        LEARNING: This is "reactive UI" — the UI reflects the
+        current state of the pipeline in real time.
+      */
+      const badge = document.getElementById(`badge-${stageId}`);
+      badge.className = `stage-badge ${status}`;
+      badge.textContent = {
+        waiting: 'waiting',
+        active: '⏳ running...',
+        done: '✅ done',
+      }[status];
+    }
+
+    function hideResults() {
+      resultCard.style.display = 'none';
+      pipelineDiv.style.display = 'none';
+      errorBox.style.display = 'none';
+      ['upload', 'vision', 'decision'].forEach(s => setStage(s, 'waiting'));
+    }
+
+    function showError(msg) {
+      errorBox.style.display = 'block';
+      errorBox.innerHTML = `⚠️ <strong>Error:</strong> ${msg}<br><small>Make sure Ollama is running and models are pulled.</small>`;
+    }
+
+    // ── MAIN ANALYZE FUNCTION ─────────────────────────────────────────
+    analyzeBtn.addEventListener('click', async () => {
+      /*
+        CONCEPT: async/await
+        "async" marks a function as asynchronous.
+        "await" pauses execution until a Promise resolves.
+        This lets us write sequential-looking code that's actually non-blocking.
+
+        Without async/await, we'd need nested callbacks (callback hell).
+        With it, we can read the code top-to-bottom like a recipe.
+      */
+
+      const file = fileInput.files[0];
+      if (!file) return;
+
+      // Reset UI
+      hideResults();
+      pipelineDiv.style.display = 'block';
+      analyzeBtn.disabled = true;
+      analyzeBtn.textContent = '⏳ Analyzing...';
+
+      try {
+        // ── STAGE 1: UPLOAD ──────────────────────────────────────────
+        setStage('upload', 'active');
+
+        /*
+          CONCEPT: FormData
+          We use FormData to send files over HTTP.
+          It creates a multipart/form-data request — the same format
+          that HTML forms use when they have file inputs.
+
+          The field name "photo" must match what FastAPI expects:
+          async def analyze_fridge(photo: UploadFile = File(...))
+        */
+        const formData = new FormData();
+        formData.append('photo', file);  // 'photo' must match the FastAPI parameter name
+
+        setStage('upload', 'done');
+
+        // ── STAGE 2: SEND TO BACKEND ─────────────────────────────────
+        setStage('vision', 'active');
+
+        /*
+          CONCEPT: fetch()
+          The Fetch API sends an HTTP request.
+          - method: 'POST' — we're sending data (not just getting it)
+          - body: formData — the image file
+          - No 'Content-Type' header — fetch sets it automatically for FormData
+        */
+        const response = await fetch(`${API_URL}/analyze`, {
+          method: 'POST',
+          body: formData,
+          // Note: do NOT set Content-Type here!
+          // fetch automatically sets it to multipart/form-data with the correct boundary
+        });
+
+        setStage('vision', 'done');
+        setStage('decision', 'active');
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.detail || `Server error ${response.status}`);
+        }
+
+        /*
+          CONCEPT: JSON
+          The backend returns JSON (text). We parse it into a JS object.
+          response.json() is async — it reads the response body stream.
+        */
+        const data = await response.json();
+
+        setStage('decision', 'done');
+
+        // ── DISPLAY RESULTS ──────────────────────────────────────────
+        displayResult(data);
+
+      } catch (err) {
+        console.error('Pipeline error:', err);
+        showError(err.message || 'Unknown error. Check console.');
+        ['upload', 'vision', 'decision'].forEach(s => setStage(s, 'waiting'));
+      } finally {
+        // "finally" runs whether we succeeded or failed
+        analyzeBtn.disabled = false;
+        analyzeBtn.textContent = '🔍 Analyze My Fridge';
+      }
+    });
+
+    // ── DISPLAY RESULT ────────────────────────────────────────────────
+    function displayResult(data) {
+      /*
+        CONCEPT: Data-driven UI
+        We take the structured JSON response from the backend
+        and map each field to a UI element.
+        The UI is a "view" of the data.
+      */
+      const isCook = data.verdict === 'COOK';
+
+      // Verdict header
+      const header = document.getElementById('verdict-header');
+      header.className = `verdict-header ${isCook ? 'cook' : 'order'}`;
+
+      document.getElementById('verdict-emoji').textContent = isCook ? '🍳' : '🛵';
+      document.getElementById('verdict-label').textContent = isCook ? 'COOK THIS' : 'ORDER INSTEAD';
+      document.getElementById('verdict-label').className = `verdict-label ${isCook ? 'cook' : 'order'}`;
+      document.getElementById('verdict-reason').textContent = data.reasoning;
+
+      // Effort pill
+      const pill = document.getElementById('effort-pill');
+      pill.className = `effort-pill ${isCook ? 'cook' : 'order'}`;
+      pill.textContent = `⏱ ${data.effort_level}`;
+
+      // Recipe or order suggestion
+      document.getElementById('recipe-value').textContent = data.recipe_or_order;
+
+      // Ingredient tags
+      const list = document.getElementById('ingredients-list');
+      list.innerHTML = data.ingredients_found
+        .map(ing => `<span class="ingredient-tag">${ing}</span>`)
+        .join('');
+
+      // Show the card
+      resultCard.style.display = 'block';
+
+      // Smooth scroll to result
+      resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  </script>
+</body>
+</html>
