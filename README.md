@@ -1,6 +1,6 @@
 # 🧊 Fridge Decider — Local AI Pipeline
 
-## What You're Building (The Mental Model)
+## Architecture
 
 ```
 Photo
@@ -20,7 +20,7 @@ Photo
 
 ---
 
-## Step 0: Understand What You're Installing
+## Intallations
 
 | Tool | Purpose | Why Local? |
 |------|---------|-----------|
@@ -137,58 +137,6 @@ xdg-open frontend/index.html
 
 ---
 
-## 🎓 Learning Checkpoints
-
-After it works, understand these concepts:
-
-### ✅ Checkpoint 1: What is the pipeline?
-Open `backend/main.py`. Find `stage1_extract_ingredients()` and `stage2_cook_or_order()`.
-These are your two pipeline stages. Each one calls Ollama with a different model.
-
-### ✅ Checkpoint 2: Why two models?
-One model (LLaVA) understands images. The other (Llama3.2) is faster for pure text.
-This is called **model routing** — using the right tool for each job.
-
-### ✅ Checkpoint 3: What is Base64?
-In `stage1_extract_ingredients`, find:
-```python
-image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-```
-JSON can only carry text. Base64 converts your image bytes to text characters.
-
-### ✅ Checkpoint 4: What is structured output?
-In the prompts, notice we always ask for JSON:
-```
-Respond ONLY with this exact JSON: {...}
-```
-This lets us parse the response and use it in code. This is called **prompt engineering**.
-
-### ✅ Checkpoint 5: What is async?
-FastAPI uses `async def` and `await`. This means the server can handle 100 requests
-simultaneously without freezing. If it were synchronous, request 2 would wait for
-request 1's AI inference to finish first.
-
----
-
-## 🚀 Extend This (Next Challenges)
-
-### Easy
-- Add a confidence score display in the UI
-- Add a "not my pantry" button to retry
-- Save results to a local SQLite database
-
-### Medium
-- Add a "what can I make this week?" mode (multiple photos)
-- Let users specify dietary restrictions in a text field
-- Stream the AI response token-by-token (real-time output)
-
-### Hard
-- Replace the frontend with a React app
-- Add a recipe history page
-- Make a mobile app with Expo/React Native that uses the same backend
-- Add a barcode scanner to log pantry items over time
-
----
 
 ## Troubleshooting
 
